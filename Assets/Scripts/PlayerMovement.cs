@@ -1,39 +1,105 @@
 using UnityEngine;
-using UnityEngine.InputSystem; // 1. Necesario para el nuevo sistema
+using UnityEngine.InputSystem; 
 
 public class PlayerMovement : MonoBehaviour
 {
-    // VARIABLES: Las "perillas" que ajustarás en el Inspector
-    public float speed = 10f; // Magnitud de la fuerza
+    [Header("Configuración Base")]
+    
+    public float speed = 10f; 
+    public float rotationSpeed = 10f;
 
+    [Header("Dash (Shift)")]
+    public float dashForce = 20f; 
+    public float dashCooldown = 1f; 
+    private float lastDashTime;
+
+    [Header("Patinaje (Ctrl)")]
+    public float normalDrag = 5f;  
+    public float skatingDrag = 0.1f;
+
+    [Header("Salto")]
+    public float jumpForce = 5f;
+    public Transform groundCheck;
+    public float groundDistance = 0.4f;
+    public LayerMask groundMask; 
+
+
+    private bool isGrounded; 
+    private bool jumpRequested = false;
     private Rigidbody rb;
-    private Vector2 moveInput; // Aquí guardaremos la dirección (X, Y) del teclado
+    private Vector2 moveInput;
+    private bool isSkating = false; 
+    private bool dashRequested = false; 
 
-    // Awake se ejecuta una sola vez al nacer el objeto. Ideal para referencias.
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
     }
-
-    // ESTO ES MAGIA DEL INPUT SYSTEM
-    // El componente Player Input busca métodos que se llamen "On" + NombreDeLaAccion
-    // Como la acción por defecto se llama "Move", él busca "OnMove".
+    
     void OnMove(InputValue value)
     {
-        // Leemos el vector (ej: W = (0, 1), D = (1, 0))
         moveInput = value.Get<Vector2>();
     }
 
-    // FixedUpdate es como Update, pero sincronizado con el motor de FÍSICAS.
-    // SIEMPRE mueve Rigidbodies aquí, nunca en Update.
+    void OnJump(InputValue value)
+    {
+        if (value.isPressed && isGrounded)
+        {
+            jumpRequested = true;
+        }
+    }
+    void OnSkate(InputValue value)
+    {
+        isSkating = value.isPressed;
+    }
+    void OnDash(InputValue value)
+    {
+        if (value.isPressed && Time.time >= lastDashTime + dashCooldown)
+        {
+            dashRequested = true;
+            lastDashTime = Time.time; 
+        }
+    }
+
     void FixedUpdate()
     {
-        // Convertimos el input 2D (X, Y) a movimiento 3D (X, 0, Z)
-        // Porque en 3D, el suelo es el plano X-Z. La Y es la altura.
-        Vector3 forceDirection = new Vector3(moveInput.x, 0, moveInput.y);
 
-        // Aplicamos fuerza física
-        // ForceMode.Force = Empuje continuo (como un motor)
+        isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, groundMask);
+
+
+        Vector3 forceDirection = new Vector3(moveInput.x, 0, moveInput.y).normalized;
+
         rb.AddForce(forceDirection * speed, ForceMode.Force);
+
+        if (jumpRequested)
+        {
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            jumpRequested = false;
+        }
+        if (forceDirection.magnitude > 0)
+        {
+            Quaternion nextRotation = Quaternion.Slerp (transform.rotation, Quaternion.LookRotation(forceDirection),rotationSpeed * Time.fixedDeltaTime);
+            rb.MoveRotation(nextRotation);
+        }
+        
+        if (dashRequested)
+        {
+
+            Vector3 dashDir = forceDirection.magnitude > 0 ? forceDirection : transform.forward;
+
+            rb.AddForce(dashDir * dashForce, ForceMode.Impulse);
+
+            dashRequested = false; 
+        }
+
+
+        if (isSkating)
+        {
+            rb.linearDamping = skatingDrag; 
+        }
+        else
+        {
+            rb.linearDamping = normalDrag;
+        }
     }
 }
